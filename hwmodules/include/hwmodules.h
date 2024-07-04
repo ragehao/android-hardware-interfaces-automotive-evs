@@ -1,5 +1,5 @@
-#ifndef __HW_MODULES_H
-#define __HW_MODULES_H
+#ifndef __HW_MODULES_H__
+#define __HW_MODULES_H__
 
 #include <hardware/hardware.h>
 
@@ -21,10 +21,7 @@ enum camera_fmt_t : int32_t {
 
 enum camera_type_t : int32_t {
     CAMERA_TYPE_RVC = 0,
-    CAMERA_TYPE_AVM_FRONT = 1,
-    CAMERA_TYPE_AVM_REAR = 2,
-    CAMERA_TYPE_AVM_LEFT = 3,
-    CAMERA_TYPE_AVM_RIGHT = 4,
+    CAMERA_TYPE_AVM = 1,
     CAMERA_TYPE_MAX,
 };
 
@@ -45,36 +42,39 @@ struct camera_info_t {
     enum camera_fmt_t format;
     uint32_t width;
     uint32_t height;
+    uint32_t fps;
 };
 
-struct camera_instance_t {
+struct camera_stream_t {
+    void* stream_handle;
+
     /** Starts video stream. */
-    int (*start_video)(struct camera_instance_t* instance);
+    int (*start_video)(struct camera_stream_t* stream);
 
     /** Enqueue camera buffer. */
-    int (*queue_buffer)(struct camera_instance_t* instance, camera_buffer_t *buffer);
+    int (*queue_buffer)(struct camera_stream_t* stream, camera_buffer_t *buffer);
 
     /** Dequeue camera buffer. */
-    int (*dequeue_buffer)(struct camera_instance_t* instance, camera_buffer_t *buffer);
+    int (*dequeue_buffer)(struct camera_stream_t* stream, camera_buffer_t *buffer);
 
     /** Stops video stream. */
-    int (*stop_video)(struct camera_instance_t* instance);
+    int (*stop_video)(struct camera_stream_t* stream);
 };
 
 struct camera_interface_t {
     size_t size;
 
     /** Get the camera list. */
-    std::vector<int> (*get_camera_list)(void);
+    std::vector<uint32_t> (*get_camera_list)(void);
 
     /** Get the given camera information. */
-    camera_info_t (*get_camera_info)(int id);
+    camera_info_t (*get_camera_info)(uint32_t id);
 
     /** Opens the camera device. */
-    camera_instance_t* (*open)(int id);
+    camera_stream_t* (*open)(uint32_t id);
 
     /** Closes the camera device. */
-    int (*close)(int id);
+    int (*close)(uint32_t id);
 };
 
 struct camera_device_t {

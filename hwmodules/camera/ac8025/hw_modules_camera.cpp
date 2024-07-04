@@ -74,23 +74,111 @@ camera_info_t getCameraInfo(uint32_t id)
 
 static int startVideo(camera_stream_t* stream)
 {
+    int ret = 0;
+    ICameraStream* camera_stream = nullptr;
 
+    if (!stream) {
+        ALOGE("Invalid stream.");
+        goto __error;
+    }
+
+    camera_stream = (ICameraStream*)stream->stream_handle;
+
+    ret = camera_stream->start();
+    if (ret) {
+        ALOGE("Failed to start video.");
+        goto __error;
+    }
+
+    return 0;
+__error:
     return -1;
 }
 
 static int queueBuffer(camera_stream_t* stream, camera_buffer_t* buffer)
 {
+    int ret = 0;
+    ICameraStream* camera_stream = nullptr;
+    ICameraStream::bufferInfo buffer_info;
+
+    if (!stream || buffer) {
+        ALOGE("Invalid argument(s).");
+        goto __error;
+    }
+
+    camera_stream = (ICameraStream*)stream->stream_handle;
+
+    buffer_info.bufIdx = buffer->buf_idx;
+    buffer_info.fd = buffer->fd;
+    buffer_info.size = buffer->size;
+    buffer_info.yStride = buffer->y_stride;
+    buffer_info.cStride = buffer->c_stride;
+    buffer_info.va = buffer->va;
+    buffer_info.pa = buffer->pa;
+
+    ret = camera_stream->enqueue(&buffer_info);
+    if (ret) {
+        ALOGE("Failed to queue buffer.");
+        goto __error;
+    }
+
+    return 0;
+__error:
     return -1;
 }
 
 static int dequeueBuffer(camera_stream_t* stream, camera_buffer_t* buffer)
 {
+    int ret = 0;
+    ICameraStream* camera_stream = nullptr;
+    ICameraStream::bufferInfo buffer_info;
+
+    if (!stream || buffer) {
+        ALOGE("Invalid argument(s).");
+        goto __error;
+    }
+
+    camera_stream = (ICameraStream*)stream->stream_handle;
+
+    ret = camera_stream->dequeue(&buffer_info);
+    if (ret) {
+        ALOGE("Failed to dequeue buffer.");
+        goto __error;
+    }
+
+    buffer->buf_idx = buffer_info.bufIdx;
+    buffer->fd = buffer_info.fd;
+    buffer->size = buffer_info.size;
+    buffer->y_stride = buffer_info.yStride;
+    buffer->c_stride = buffer_info.cStride;
+    buffer->va = buffer_info.va;
+    buffer->pa = buffer_info.pa;
+    buffer->timestamp = buffer_info.timestamp;
+
+    return 0;
+__error:
     return -1;
 }
 
 static int stopVideo(camera_stream_t* stream)
 {
+    int ret = 0;
+    ICameraStream* camera_stream = nullptr;
 
+    if (!stream) {
+        ALOGE("Invalid stream.");
+        goto __error;
+    }
+
+    camera_stream = (ICameraStream*)stream->stream_handle;
+
+    ret = camera_stream->stop();
+    if (ret) {
+        ALOGE("Failed to stop video.");
+        goto __error;
+    }
+
+__error:
     return -1;
 }
 

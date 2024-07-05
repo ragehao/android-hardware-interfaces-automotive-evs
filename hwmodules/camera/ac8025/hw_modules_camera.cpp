@@ -285,12 +285,14 @@ static int open_camera(const struct hw_module_t *module, char const *name, struc
 
     *device = (struct hw_device_t *) dev;
 
-    sCameraManager = ICameraManager::getCameraManager();
     if (!sCameraManager) {
-        ALOGE("Failed to get camera manager");
-        return -1;
+        sCameraManager = ICameraManager::getCameraManager();
+        if (!sCameraManager) {
+            ALOGE("Failed to get camera manager");
+            return -1;
+        }
     }
-
+    
     return 0;
 }
 

@@ -9,7 +9,7 @@
  */
 #define CAMERA_HARDWARE_MODULE_ID "evs.camera"
 
-enum camera_fmt_t : int32_t {
+typedef enum camera_fmt_t : int32_t {
     CAMERA_FMT_YUYV = 0,
     CAMERA_FMT_UYVY = 1,
     CAMERA_FMT_YV12 = 2,
@@ -17,15 +17,15 @@ enum camera_fmt_t : int32_t {
     CAMERA_FMT_NV21 = 4,
     CAMERA_FMT_NV12 = 5,
     CAMERA_FMT_MAX  = 6,
-};
+} CameraFmt;
 
-enum camera_type_t : int32_t {
+typedef enum camera_type_t : int32_t {
     CAMERA_TYPE_RVC = 0,
     CAMERA_TYPE_AVM = 1,
     CAMERA_TYPE_MAX,
-};
+} CameraType;
 
-struct camera_buffer_t {
+typedef struct camera_buffer_t {
     unsigned int buf_idx;   /**<Buffer index*/
     int fd;                 /**<Buffer fd*/
     unsigned int size;      /**<Buffer size in byte*/
@@ -34,18 +34,18 @@ struct camera_buffer_t {
     void* va;               /**<IO Virtual memory address*/
     void* pa;               /**<Buffer physical memory address. Reserved*/
     int64_t timestamp;      /**<Data timestamp*/
-};
+} CameraBuffer;
 
-struct camera_info_t {
+typedef struct camera_info_t {
     enum camera_type_t type;
     uint32_t vendorFlags;
     enum camera_fmt_t format;
     uint32_t width;
     uint32_t height;
     uint32_t fps;
-};
+} CameraInfo;
 
-struct camera_stream_t {
+typedef struct camera_stream_t {
     void* stream_handle;
 
     /** Starts video stream. */
@@ -59,9 +59,9 @@ struct camera_stream_t {
 
     /** Stops video stream. */
     int (*stop_video)(struct camera_stream_t* stream);
-};
+} CameraStream;
 
-struct camera_interface_t {
+typedef struct camera_interface_t {
     size_t size;
 
     /** Get the camera list. */
@@ -75,7 +75,7 @@ struct camera_interface_t {
 
     /** Closes the camera device. */
     int (*close)(uint32_t id);
-};
+} CameraInterface;
 
 struct camera_device_t {
     struct hw_device_t common;

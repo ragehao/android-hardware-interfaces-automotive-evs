@@ -59,16 +59,14 @@ EvsCamera::EvsCamera(const char *id,
 
 EvsCamera::EvsCamera(const char *id,
                      unique_ptr<ConfigManager::CameraInfo> &camInfo,
-                     ICameraSource* source) :
+                     CameraStream* cameraStream) :
         mFramesAllowed(0),
         mFramesInUse(0),
         mStreamState(STOPPED),
-        mCameraSource(source),
+        mCameraStream(cameraStream),
         mCameraInfo(camInfo) {
 
-    int ret;
-
-    if (!id || !source) {
+    if (!id || !cameraStream) {
         ALOGE("Invalid parameters.");
         return;
     }
@@ -87,66 +85,12 @@ EvsCamera::EvsCamera(const char *id,
 
     mDescription.v1.cameraId = id;
 
-    ret = mCameraSource->open();
-    if (ret) {
-        ALOGE("Camera[%s] source open failed.", id);
-        return;
-    }
-
-    mCameraStream = mCameraSource->acquireCameraStream();
-    if (!mCameraStream) {
-        ALOGE("Camera[%s] acquireCameraStream failed.", id);
-        return;
-    }
-
-    ICameraStream::Capability caps;
-
-    ret = mCameraStream->queryCapabilities(caps);
-    if (ret) {
-        ALOGE("Camera[%s] queryCapabilities failed.", id);
-        return;
-    }
-
-    std::vector<videoin_format> formats;
-    
-    ret = mCameraStream->getFormatList(formats);
-    if (ret) {
-        ALOGE("Camera[%s] getFormatList failed.", id);
-        return;
-    }
-
-    for (int i = 0; i < formats.size(); i++) {
-        ALOGI("Camera[%s] format[%d]: width = %d, height = %d, pixelfmt = %x, fps = %d.", 
-            id, i,
-            formats[i].width, formats[i].height, formats[i].pixelfmt, formats[i].fps);
-    }
-
-    // Set format.
-    videoin_format format;
-
-    format.pixelfmt = VIDEOIN_DATA_FMT_UYVY;;
-    format.width = mWidth;
-    format.height = mHeight;
-    format.fps = mFps;
-
-    ret = mCameraStream->config(format, ICameraStream::ALLOCATE_BUFFER_BY_USER, mFramesAllowed);
-    if (ret) {
-        ALOGE("Camera[%s] config stream failed.", mDescription.v1.cameraId.c_str());
-    }
-
     ALOGD("EvsCamera instantiated");
 }
 
 EvsCamera::~EvsCamera() {
-    int ret;
     ALOGD("EvsCamera being destroyed");
     forceShutdown();
-
-    ret = mCameraSource->close();
-    if (ret) {
-        ALOGE("Camera[%s] source close failed.", mDescription.v1.cameraId.c_str());
-        return;
-    }
 }
 
 
@@ -179,30 +123,31 @@ void EvsCamera::forceShutdown()
 
     if (mIonBuffers.size() > 0) {
         for (auto&& rec : mIonBuffers) {
+            
             if (rec.inUse) {
                 ALOGE("Error - releasing buffer despite remote ownership");
             }
 
             if (rec.isExternal) {
                 // munmap va.
-                munmap((void*)rec.info->va, rec.info->size);
+                munmap((void*)rec.bufferInfo->va, rec.bufferInfo->size);
                 // Close fd.
-                close(rec.info->fd);
-                free(rec.info);
-                rec.info = nullptr;
+                close(rec.bufferInfo->fd);
+                free(rec.bufferInfo);
+                rec.bufferInfo = nullptr;
             } else {
                 videoin_buf_output_info outInfo;
-                outInfo.va = rec.info->va;
-                outInfo.fd = rec.info->fd;
-                outInfo.size = rec.info->size;
+                outInfo.va = rec.bufferInfo->va;
+                outInfo.fd = rec.bufferInfo->fd;
+                outInfo.size = rec.bufferInfo->size;
 
                 int ret = videoin_buffer_free(&outInfo);
                 if (ret) {
                     ALOGE("videoin_buffer_free failed.");
                 }
                 
-                free(rec.info);
-                rec.info = nullptr;
+                free(rec.bufferInfo);
+                rec.bufferInfo = nullptr;
                 free((void*)rec.handle);
                 rec.handle = nullptr;
             }
@@ -277,11 +222,11 @@ Return<EvsResult> EvsCamera::startVideoStream(const ::android::sp<IEvsCameraStre
     // Enqueue user pre-alloc buffer.
     for (int i = 0; i < mIonBuffers.size(); i++) {
         buffer_handle_t handle = mIonBuffers[i].handle;
-        ICameraStream::bufferInfo* info = mIonBuffers[i].info;
+        CameraBuffer* info = mIonBuffers[i].bufferInfo;
 
         if (!handle || !info) continue;
 
-        ret = mCameraStream->enqueue(info);
+        ret = mCameraStream->queue_buffer(mCameraStream, info);
         if (ret) {
             ALOGE("Camera[%s] enqueue stream failed.", mDescription.v1.cameraId.c_str());
             return EvsResult::UNDERLYING_SERVICE_ERROR;
@@ -292,7 +237,7 @@ Return<EvsResult> EvsCamera::startVideoStream(const ::android::sp<IEvsCameraStre
     }
 
     // Stream on.
-    ret = mCameraStream->start();
+    ret = mCameraStream->start_video(mCameraStream);
     if (ret) {
         ALOGE("Camera[%s] start stream failed.", mDescription.v1.cameraId.c_str());
         return EvsResult::UNDERLYING_SERVICE_ERROR;
@@ -415,9 +360,9 @@ Return<EvsResult> EvsCamera::doneWithFrame_1_1(const hidl_vec<BufferDesc_1_1>& b
             mFramesInUse--;
 
             // Enqueue buffer to camera stream.
-            ICameraStream::bufferInfo* info;
-            info = mIonBuffers[buffer.bufferId].info;
-            int ret = mCameraStream->enqueue(info);
+            CameraBuffer* info;
+            info = mIonBuffers[buffer.bufferId].bufferInfo;
+            int ret = mCameraStream->queue_buffer(mCameraStream, info);
             if (ret) {
                 ALOGE("Camera[%s] enqueue buffer id = %d failed.", mDescription.v1.cameraId.c_str(), buffer.bufferId);
             } else {
@@ -544,16 +489,16 @@ EvsCamera::importExternalBuffers(const hidl_vec<BufferDesc_1_1>& buffers,
 
         AHardwareBuffer_Desc* pDesc = reinterpret_cast<AHardwareBuffer_Desc*>(&buffer.buffer.description);
 
-        bufferNode.info = (ICameraStream::bufferInfo*)malloc(sizeof(ICameraStream::bufferInfo));
-        bufferNode.info->fd = dup(buffer.buffer.nativeHandle.getNativeHandle()->data[0]);
-        bufferNode.info->size = pDesc->width * pDesc->height;
-        bufferNode.info->va = mmap(nullptr, bufferNode.info->size, PROT_READ | PROT_WRITE, MAP_SHARED, bufferNode.info->fd, 0);
-        bufferNode.info->yStride = pDesc->width * 2;
-        bufferNode.info->cStride = 0;
-        bufferNode.info->bufIdx = i;
+        bufferNode.bufferInfo = (CameraBuffer*)malloc(sizeof(CameraBuffer));
+        bufferNode.bufferInfo->fd = dup(buffer.buffer.nativeHandle.getNativeHandle()->data[0]);
+        bufferNode.bufferInfo->size = pDesc->width * pDesc->height;
+        bufferNode.bufferInfo->va = mmap(nullptr, bufferNode.bufferInfo->size, PROT_READ | PROT_WRITE, MAP_SHARED, bufferNode.bufferInfo->fd, 0);
+        bufferNode.bufferInfo->y_stride = pDesc->width * 2;
+        bufferNode.bufferInfo->c_stride = 0;
+        bufferNode.bufferInfo->buf_idx = i;
         mIonBuffers.push_back(bufferNode);
 
-        ALOGI("Camera[%s] import buffer info[%d]: fd=%d, size=%u, va=%p.", mDescription.v1.cameraId.c_str(), i, bufferNode.info->fd, bufferNode.info->size, bufferNode.info->va);
+        ALOGI("Camera[%s] import buffer info[%d]: fd=%d, size=%u, va=%p.", mDescription.v1.cameraId.c_str(), i, bufferNode.bufferInfo->fd, bufferNode.bufferInfo->size, bufferNode.bufferInfo->va);
         
         mFramesAllowed++;
     }
@@ -664,12 +609,12 @@ unsigned EvsCamera::increaseAvailableFrames_Locked(unsigned numToAdd) {
         BufferNode bufferNode;
         bufferNode.inUse = false;
         bufferNode.isExternal = false;
-        bufferNode.info = (ICameraStream::bufferInfo*)malloc(sizeof(ICameraStream::bufferInfo));
-        bufferNode.info->va = outInfo.va;
-        bufferNode.info->fd = outInfo.fd;
-        bufferNode.info->size = outInfo.size;
-        bufferNode.info->yStride = outInfo.stride[0];
-        bufferNode.info->cStride = outInfo.stride[1];
+        bufferNode.bufferInfo = (CameraBuffer*)malloc(sizeof(CameraBuffer));
+        bufferNode.bufferInfo->va = outInfo.va;
+        bufferNode.bufferInfo->fd = outInfo.fd;
+        bufferNode.bufferInfo->size = outInfo.size;
+        bufferNode.bufferInfo->y_stride = outInfo.stride[0];
+        bufferNode.bufferInfo->c_stride = outInfo.stride[1];
         bufferNode.handle = (native_handle_t*)malloc(sizeof(native_handle_t) + 4);
         // Fill native_handle.
         native_handle_t* t = const_cast<native_handle_t*>(bufferNode.handle);        
@@ -681,10 +626,10 @@ unsigned EvsCamera::increaseAvailableFrames_Locked(unsigned numToAdd) {
         // Find a place to store the new buffer
         bool stored = false;
         for (int i = 0; i < mIonBuffers.size(); i++) {
-            if (mIonBuffers[i].info == nullptr) {
+            if (mIonBuffers[i].bufferInfo == nullptr) {
                 // Use this existing entry
-                bufferNode.info->bufIdx = i;
-                mIonBuffers[i].info = bufferNode.info;
+                bufferNode.bufferInfo->buf_idx = i;
+                mIonBuffers[i].bufferInfo = bufferNode.bufferInfo;
                 mIonBuffers[i].handle = bufferNode.handle;
                 mIonBuffers[i].inUse = false;
                 stored = true;
@@ -693,11 +638,11 @@ unsigned EvsCamera::increaseAvailableFrames_Locked(unsigned numToAdd) {
         }
 
         if (!stored) {
-            bufferNode.info->bufIdx = mIonBuffers.size();
+            bufferNode.bufferInfo->buf_idx = mIonBuffers.size();
             mIonBuffers.push_back(bufferNode);
         }
         
-        ALOGI("Buffer[%d] info: va = %p, fd = %d, size = %d.", bufferNode.info->bufIdx, bufferNode.info->va, bufferNode.info->fd, bufferNode.info->size);
+        ALOGI("Buffer[%d] info: va = %p, fd = %d, size = %d.", bufferNode.bufferInfo->buf_idx, bufferNode.bufferInfo->va, bufferNode.bufferInfo->fd, bufferNode.bufferInfo->size);
 
         mFramesAllowed++;
         added++;
@@ -733,21 +678,21 @@ unsigned EvsCamera::decreaseAvailableFrames_Locked(unsigned numToRemove) {
 
     for (auto&& rec : mIonBuffers) {
         // Is this record not in use, but holding a buffer that we can free?
-        if ((rec.inUse == false) && (rec.handle != nullptr) && (rec.info != nullptr)) {
+        if ((rec.inUse == false) && (rec.handle != nullptr) && (rec.bufferInfo != nullptr)) {
             // Release buffer and update the record so we can recognize it as "empty"
             if (rec.isExternal) {
-                close(rec.info->fd);
-                munmap(rec.info->va, rec.info->size);
+                close(rec.bufferInfo->fd);
+                munmap(rec.bufferInfo->va, rec.bufferInfo->size);
 
-                free(rec.info);
+                free(rec.bufferInfo);
 
-                rec.info = nullptr;
+                rec.bufferInfo = nullptr;
                 rec.handle = nullptr;
             } else {
                 videoin_buf_output_info outInfo;
-                outInfo.va = rec.info->va;
-                outInfo.fd = rec.info->fd;
-                outInfo.size = rec.info->size;
+                outInfo.va = rec.bufferInfo->va;
+                outInfo.fd = rec.bufferInfo->fd;
+                outInfo.size = rec.bufferInfo->size;
 
                 int ret = videoin_buffer_free(&outInfo);
                 if (ret) {
@@ -755,9 +700,9 @@ unsigned EvsCamera::decreaseAvailableFrames_Locked(unsigned numToRemove) {
                 }
 
                 free((void*)rec.handle);
-                free(rec.info);
+                free(rec.bufferInfo);
 
-                rec.info = nullptr;
+                rec.bufferInfo = nullptr;
                 rec.handle = nullptr;
             }
 
@@ -825,9 +770,9 @@ void EvsCamera::generateFrames() {
         }
 
         if (timeForFrame) {
-            ICameraStream::bufferInfo bufferInfo;
+            CameraBuffer bufferInfo;
 
-            int ret = mCameraStream->dequeue(&bufferInfo);
+            int ret = mCameraStream->dequeue_buffer(mCameraStream, &bufferInfo);
             if (ret) {
                 ALOGE("Camera[%s] stream dequeue failed.", mDescription.v1.cameraId.c_str());
                 usleep(10 * 1000); // 10ms
@@ -836,7 +781,7 @@ void EvsCamera::generateFrames() {
 
             ALOGD("Camera[%s] dequeue buffer info: index = %d, fd = %d, size = %d, va = %p, pa = %p.", 
                 mDescription.v1.cameraId.c_str(),
-                bufferInfo.bufIdx, bufferInfo.fd, bufferInfo.size, bufferInfo.va, bufferInfo.pa);
+                bufferInfo.buf_idx, bufferInfo.fd, bufferInfo.size, bufferInfo.va, bufferInfo.pa);
 
             // Assemble the buffer description we'll transmit below
             BufferDesc_1_1 newBuffer = {};
@@ -858,13 +803,13 @@ void EvsCamera::generateFrames() {
             newBuffer.timestamp = elapsedRealtimeNano();
             // NOTE: we want change iterator, so use reference!!!
             for(auto &rec: mIonBuffers) {
-                if (rec.info->fd == bufferInfo.fd) {
+                if (rec.bufferInfo->fd == bufferInfo.fd) {
                     newBuffer.buffer.nativeHandle = rec.handle;
                     rec.inUse = true;
-                    idx = rec.info->bufIdx;
+                    idx = rec.bufferInfo->buf_idx;
                     mFramesInUse++;
                     ALOGD("Camera[%s] Found buffer index = %d fd = %d, set it in use.", mDescription.v1.cameraId.c_str(),
-                                                                                        rec.info->bufIdx, bufferInfo.fd);
+                                                                                        rec.bufferInfo->buf_idx, bufferInfo.fd);
                 }
             }
 
@@ -1064,10 +1009,10 @@ sp<EvsCamera> EvsCamera::Create(const char *deviceName,
     return evsCamera;
 }
 
-sp<EvsCamera> EvsCamera::Create(const char *deviceName, ICameraSource* source) {
+sp<EvsCamera> EvsCamera::Create(const char *deviceName, camera_stream_t* cameraStream) {
     unique_ptr<ConfigManager::CameraInfo> nullCamInfo = nullptr;
 
-    sp<EvsCamera> evsCamera = new EvsCamera(deviceName, nullCamInfo, source);
+    sp<EvsCamera> evsCamera = new EvsCamera(deviceName, nullCamInfo, cameraStream);
     if (evsCamera == nullptr) {
         return nullptr;
     }

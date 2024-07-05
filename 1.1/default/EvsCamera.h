@@ -25,8 +25,7 @@
 
 #include <thread>
 
-#include "ICameraSource.h"
-#include "buf_allocator.h"
+#include "hwmodules.h"
 
 #include "ConfigManager.h"
 
@@ -92,7 +91,7 @@ public:
     static sp<EvsCamera> Create(const char *deviceName,
                                 unique_ptr<ConfigManager::CameraInfo> &camInfo,
                                 const Stream *streamCfg = nullptr);
-    static sp<EvsCamera> Create(const char *deviceName, ICameraSource* source);                              
+    static sp<EvsCamera> Create(const char *deviceName, camera_stream_t* cameraStream);                              
     EvsCamera(const EvsCamera&) = delete;
     EvsCamera& operator=(const EvsCamera&) = delete;
 
@@ -108,7 +107,7 @@ private:
               unique_ptr<ConfigManager::CameraInfo> &camInfo);
     EvsCamera(const char *id,
               unique_ptr<ConfigManager::CameraInfo> &camInfo,
-              ICameraSource* source);
+              CameraStream* cameraStream);
     // These three functions are expected to be called while mAccessLock is held
     //
     bool setAvailableFrames_Locked(unsigned bufferCount);
@@ -157,11 +156,10 @@ private:
     // Synchronization necessary to deconflict mCaptureThread from the main service thread
     std::mutex mAccessLock;
 
-    ICameraSource* mCameraSource;
-    ICameraStream* mCameraStream;
+    CameraStream* mCameraStream;
 
     struct BufferNode {
-		ICameraStream::bufferInfo* info;
+		CameraBuffer* bufferInfo;
         buffer_handle_t handle;
 		bool inUse;
         bool isExternal;

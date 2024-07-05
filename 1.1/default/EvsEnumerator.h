@@ -25,8 +25,7 @@
 
 #include <list>
 
-#include "ICameraManager.h"
-#include "ICameraSource.h"
+#include "hwmodules.h"
 
 #include "ConfigManager.h"
 
@@ -111,10 +110,9 @@ private:
     static unique_ptr<ConfigManager> sConfigManager;
 
     static sp<IAutomotiveDisplayProxyService> sDisplayProxyService;
-    static std::unordered_map<uint8_t,
-                              uint64_t> sDisplayPortList;
+    static std::unordered_map<uint8_t, uint64_t> sDisplayPortList;
 
-    static ICameraManager* sCameraManager;
+    static const CameraInterface* sCameraInterface;
 };
 
 } // namespace implementation

@@ -9,8 +9,8 @@ LOCAL_SHARED_LIBRARIES := \
     libhardware \
     libcamera.source
 
-LOCAL_C_INCLUDES := \
-        $(LOCAL_PATH)/../../include
+LOCAL_HEADER_LIBRARIES := \
+        libevs_hwmodules_headers
 
 LOCAL_SRC_FILES := hw_modules_camera.cpp
 

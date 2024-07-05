@@ -39,15 +39,14 @@ sp<IAutomotiveDisplayProxyService>                  EvsEnumerator::sDisplayProxy
 std::unordered_map<uint8_t, uint64_t>               EvsEnumerator::sDisplayPortList;
 std::list<EvsEnumerator::UltrasonicsArrayRecord>    EvsEnumerator::sUltrasonicsArrayRecordList;
 
-ICameraManager*                                     EvsEnumerator::sCameraManager;
+const CameraInterface*                              EvsEnumerator::sCameraInterface;
 
 EvsEnumerator::EvsEnumerator(sp<IAutomotiveDisplayProxyService> windowService) {
     ALOGD("EvsEnumerator created");
 
     // Add sample camera data to our list of cameras
     // In a real driver, this would be expected to can the available hardware
-    sConfigManager =
-        ConfigManager::Create("/vendor/etc/automotive/evs/evs_default_configuration.xml");
+    sConfigManager = ConfigManager::Create("/vendor/etc/automotive/evs/evs_default_configuration.xml");
 
     // Add available cameras
     // TODO: config manager not supported yet.
@@ -57,15 +56,31 @@ EvsEnumerator::EvsEnumerator(sp<IAutomotiveDisplayProxyService> windowService) {
     }
     
     #else
-    sCameraManager = ICameraManager::getCameraManager();
-    if (!sCameraManager) {
-        ALOGE("Failed to getCameraManager.");
+    hw_module_t* module;
+    struct camera_device_t* camdev;
+    int err = hw_get_module(CAMERA_HARDWARE_MODULE_ID, (hw_module_t const**)&module);
+    if (err)  {
+        ALOGE("hw_get_module load camera module falied!");
+        return;
+    }
+
+    hw_device_t* device;
+    err = module->methods->open(module, CAMERA_HARDWARE_MODULE_ID, &device);
+    if (err) {
+        ALOGE("open camera module falied!");
+        return;
+    }
+
+    camdev = reinterpret_cast<camera_device_t*>(device);
+    sCameraInterface = camdev->get_camera_interface();
+    if (sCameraInterface == nullptr) {
+        ALOGE("get_camera_interface falied!");
         return;
     }
 
     std::vector<unsigned int> cameraList;
 
-    sCameraManager->getCameraList(cameraList);
+    cameraList = sCameraInterface->get_camera_list();
     for (int i = 0; i < cameraList.size(); i++) {
         ALOGI("Camera[%d] id = %d.", i, cameraList[i]);
         sCameraList.emplace_back(CameraRecord(std::to_string(cameraList[i]).c_str()));
@@ -157,13 +172,15 @@ Return<sp<IEvsCamera_1_0>> EvsEnumerator::openCamera(const hidl_string& cameraId
                                           sConfigManager->getCameraInfo(cameraId));
     }
     #else
-    ICameraSource* source = sCameraManager->getCameraInstance(std::stoi(cameraId));
-    if (!source) {
+
+
+    camera_stream_t* stream = sCameraInterface->open(std::stoi(cameraId));
+    if (!stream) {
         ALOGE("Camera[%s] getCameraInstance failed.", cameraId.c_str());
         return nullptr;
     }
 
-    pActiveCamera =  EvsCamera::Create(cameraId.c_str(), source);
+    pActiveCamera =  EvsCamera::Create(cameraId.c_str(), stream);
     #endif
 
     pRecord->activeInstance = pActiveCamera;
@@ -373,13 +390,13 @@ EvsEnumerator::openCamera_1_1(const hidl_string& cameraId,
     }
     #else
     (void)streamCfg;
-    ICameraSource* source = sCameraManager->getCameraInstance(std::stoi(cameraId));
-    if (!source) {
+    CameraStream* stream = sCameraInterface->open(std::stoi(cameraId));
+    if (!stream) {
         ALOGE("Camera[%s] getCameraInstance failed.", cameraId.c_str());
         return nullptr;
     }
 
-    pActiveCamera = EvsCamera::Create(cameraId.c_str(), source);
+    pActiveCamera = EvsCamera::Create(cameraId.c_str(), stream);
     #endif
 
     pRecord->activeInstance = pActiveCamera;

@@ -174,13 +174,15 @@ Return<sp<IEvsCamera_1_0>> EvsEnumerator::openCamera(const hidl_string& cameraId
     #else
 
 
-    camera_stream_t* stream = sCameraInterface->open(std::stoi(cameraId));
+    CameraStream* stream = sCameraInterface->open(std::stoi(cameraId));
     if (!stream) {
         ALOGE("Camera[%s] getCameraInstance failed.", cameraId.c_str());
         return nullptr;
     }
 
-    pActiveCamera =  EvsCamera::Create(cameraId.c_str(), stream);
+    CameraInfo info = sCameraInterface->get_camera_info(std::stoi(cameraId));
+
+    pActiveCamera = EvsCamera::Create(cameraId.c_str(), &info, stream);
     #endif
 
     pRecord->activeInstance = pActiveCamera;
@@ -396,7 +398,9 @@ EvsEnumerator::openCamera_1_1(const hidl_string& cameraId,
         return nullptr;
     }
 
-    pActiveCamera = EvsCamera::Create(cameraId.c_str(), stream);
+    CameraInfo info = sCameraInterface->get_camera_info(std::stoi(cameraId));
+
+    pActiveCamera = EvsCamera::Create(cameraId.c_str(), &info, stream);
     #endif
 
     pRecord->activeInstance = pActiveCamera;

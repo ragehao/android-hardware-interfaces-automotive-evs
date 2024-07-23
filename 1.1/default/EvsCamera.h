@@ -91,7 +91,9 @@ public:
     static sp<EvsCamera> Create(const char *deviceName,
                                 unique_ptr<ConfigManager::CameraInfo> &camInfo,
                                 const Stream *streamCfg = nullptr);
-    static sp<EvsCamera> Create(const char *deviceName, camera_stream_t* cameraStream);                              
+    static sp<EvsCamera> Create(const char *deviceName, 
+                                CameraInfo* cameraInfo, 
+                                CameraStream* cameraStream);
     EvsCamera(const EvsCamera&) = delete;
     EvsCamera& operator=(const EvsCamera&) = delete;
 
@@ -131,6 +133,7 @@ private:
     uint64_t mUsage  = 0;           // Values from from Gralloc.h
     uint32_t mStride = 0;           // Bytes per line in the buffers
     uint32_t mFps    = 25;          // Frames per second
+    uint32_t mSize   = 0;           // Bytes per frame
 
     sp<IEvsCameraStream_1_1> mStream = nullptr;  // The callback used to deliver each frame
 

@@ -23,13 +23,13 @@
 
 static ICameraManager* sCameraManager = nullptr;
 
-const static std::map<camera_fmt_t, uint32_t> kCameraFormat = {
-    {camera_fmt_t::CAMERA_FMT_YUYV, VIDEOIN_DATA_FMT_YUYV},
-    {camera_fmt_t::CAMERA_FMT_UYVY, VIDEOIN_DATA_FMT_UYVY},
-    {camera_fmt_t::CAMERA_FMT_YV12, VIDEOIN_DATA_FMT_YVU420},
-    {camera_fmt_t::CAMERA_FMT_YU12, VIDEOIN_DATA_FMT_YUV420},
-    {camera_fmt_t::CAMERA_FMT_NV21, VIDEOIN_DATA_FMT_NV12},
-    {camera_fmt_t::CAMERA_FMT_NV12, VIDEOIN_DATA_FMT_NV21},
+const static std::map<uint32_t, camera_fmt_t> kCameraFormat = {
+    {VIDEOIN_DATA_FMT_YUYV, camera_fmt_t::CAMERA_FMT_YUYV},
+    {VIDEOIN_DATA_FMT_UYVY, camera_fmt_t::CAMERA_FMT_UYVY},
+    {VIDEOIN_DATA_FMT_YVU420, camera_fmt_t::CAMERA_FMT_YV12},
+    {VIDEOIN_DATA_FMT_YUV420, camera_fmt_t::CAMERA_FMT_YU12},
+    {VIDEOIN_DATA_FMT_NV12, camera_fmt_t::CAMERA_FMT_NV21},
+    {VIDEOIN_DATA_FMT_NV21, camera_fmt_t::CAMERA_FMT_NV12},
 };
 
 const static std::map<int, camera_info_t> kCameraInfo = {
@@ -67,6 +67,8 @@ camera_info_t getCameraInfo(uint32_t id)
 
     info.width = staticInfo.width;
     info.height = staticInfo.height;
+    info.fps = staticInfo.fps;
+    // info.format = kCameraFormat.find(staticInfo.format)->second;
     // TODO: add other fields.
 
     return info;
@@ -112,7 +114,7 @@ static int queueBuffer(camera_stream_t* stream, camera_buffer_t* buffer)
     buffer_info.fd = buffer->fd;
     buffer_info.size = buffer->size;
     buffer_info.yStride = buffer->y_stride;
-    buffer_info.cStride = buffer->c_stride;
+    buffer_info.cStride = buffer->u_stride;
     buffer_info.va = buffer->va;
     buffer_info.pa = buffer->pa;
 
@@ -150,7 +152,7 @@ static int dequeueBuffer(camera_stream_t* stream, camera_buffer_t* buffer)
     buffer->fd = buffer_info.fd;
     buffer->size = buffer_info.size;
     buffer->y_stride = buffer_info.yStride;
-    buffer->c_stride = buffer_info.cStride;
+    buffer->u_stride = buffer_info.cStride;
     buffer->va = buffer_info.va;
     buffer->pa = buffer_info.pa;
     buffer->timestamp = buffer_info.timestamp;

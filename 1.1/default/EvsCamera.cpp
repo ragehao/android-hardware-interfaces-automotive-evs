@@ -70,19 +70,7 @@ EvsCamera::EvsCamera(const char *id,
         ALOGE("Invalid parameters.");
         return;
     }
-
-    // TODO: only support fixed avm cameras.
-    mWidth = 1280;
-    mHeight = 960;
-    mFps = 30;
-
-    mFormat = HAL_PIXEL_FORMAT_YCBCR_422_I; // FIXME
-
-    mStride = mWidth * 2;
-
-    mUsage  = GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_CAMERA_WRITE |
-              GRALLOC_USAGE_SW_READ_RARELY | GRALLOC_USAGE_SW_WRITE_RARELY;
-
+    
     mDescription.v1.cameraId = id;
 
     ALOGD("EvsCamera instantiated");
@@ -136,19 +124,9 @@ void EvsCamera::forceShutdown()
                 free(rec.bufferInfo);
                 rec.bufferInfo = nullptr;
             } else {
-                videoin_buf_output_info outInfo;
-                outInfo.va = rec.bufferInfo->va;
-                outInfo.fd = rec.bufferInfo->fd;
-                outInfo.size = rec.bufferInfo->size;
-
-                int ret = videoin_buffer_free(&outInfo);
-                if (ret) {
-                    ALOGE("videoin_buffer_free failed.");
-                }
                 
                 free(rec.bufferInfo);
                 rec.bufferInfo = nullptr;
-                free((void*)rec.handle);
                 rec.handle = nullptr;
             }
         }
@@ -491,10 +469,10 @@ EvsCamera::importExternalBuffers(const hidl_vec<BufferDesc_1_1>& buffers,
 
         bufferNode.bufferInfo = (CameraBuffer*)malloc(sizeof(CameraBuffer));
         bufferNode.bufferInfo->fd = dup(buffer.buffer.nativeHandle.getNativeHandle()->data[0]);
-        bufferNode.bufferInfo->size = pDesc->width * pDesc->height;
+        bufferNode.bufferInfo->size = pDesc->width * pDesc->height * 2;
         bufferNode.bufferInfo->va = mmap(nullptr, bufferNode.bufferInfo->size, PROT_READ | PROT_WRITE, MAP_SHARED, bufferNode.bufferInfo->fd, 0);
         bufferNode.bufferInfo->y_stride = pDesc->width * 2;
-        bufferNode.bufferInfo->c_stride = 0;
+        bufferNode.bufferInfo->u_stride = 0;
         bufferNode.bufferInfo->buf_idx = i;
         mIonBuffers.push_back(bufferNode);
 
@@ -552,12 +530,12 @@ bool EvsCamera::setAvailableFrames_Locked(unsigned bufferCount) {
 
 unsigned EvsCamera::increaseAvailableFrames_Locked(unsigned numToAdd) {
     // Acquire the graphics buffer allocator
-    // GraphicBufferAllocator &alloc(GraphicBufferAllocator::get());
+    GraphicBufferAllocator &alloc(GraphicBufferAllocator::get());
 
     unsigned added = 0;
 
     while (added < numToAdd) {
-        #if 0
+        #if 1
         buffer_handle_t memHandle = nullptr;
         status_t result = alloc.allocate(mWidth, mHeight, mFormat, 1, mUsage,
                                          &memHandle, &mStride, 0, "EvsCamera");
@@ -569,6 +547,16 @@ unsigned EvsCamera::increaseAvailableFrames_Locked(unsigned numToAdd) {
             ALOGE("We didn't get a buffer handle back from the allocator");
             break;
         }
+
+        #ifdef DEBUG
+        for (int i = 0; i < memhandle->numFds; i++) {
+            ALOGD("fd[%d] = %d", i, memhandle->data[i]);
+        }
+
+        for (int i = 0; i < memhandle->numInts; i++) {
+            ALOGD("fd[%d] = %d", i, memhandle->data[memhandle->numFds + i]);
+        }
+        #endif
 
         // Find a place to store the new buffer
         bool stored = false;
@@ -587,44 +575,16 @@ unsigned EvsCamera::increaseAvailableFrames_Locked(unsigned numToAdd) {
         }
         #endif
 
-        videoin_buf_output_info outInfo;
-        videoin_buf_intput_info inParam;
-
-        inParam.fmt = VIDEOIN_BUF_FMT_UYVY;
-        inParam.width = mWidth;
-        inParam.height = mHeight;
-        inParam.mem_type = VIDEOIN_BUF_TYPE_INTERNAL;
-
-        int ret = videoin_buffer_alloc(&inParam, &outInfo);
-        if (ret) {
-            ALOGE("videoin_buffer_alloc failed.");
-            break;
-        }
-
-        if (outInfo.fd <= 0 || outInfo.size <= 0) {
-            ALOGE("Invalid output info.");
-            break;
-        }
-
         BufferNode bufferNode;
         bufferNode.inUse = false;
         bufferNode.isExternal = false;
         bufferNode.bufferInfo = (CameraBuffer*)malloc(sizeof(CameraBuffer));
-        bufferNode.bufferInfo->va = outInfo.va;
-        bufferNode.bufferInfo->fd = outInfo.fd;
-        bufferNode.bufferInfo->size = outInfo.size;
-        bufferNode.bufferInfo->y_stride = outInfo.stride[0];
-        bufferNode.bufferInfo->c_stride = outInfo.stride[1];
-        bufferNode.handle = (native_handle_t*)malloc(sizeof(native_handle_t) + 4);
-        // Fill native_handle.
-        native_handle_t* t = const_cast<native_handle_t*>(bufferNode.handle);        
-        t->version = sizeof(native_handle_t);
-        t->numFds = 1;
-        t->numInts = 0;
-        t->data[0] = outInfo.fd;
+        bufferNode.bufferInfo->fd = memHandle->data[0];
+        bufferNode.bufferInfo->size = mSize;
+        bufferNode.handle = memHandle;
 
         // Find a place to store the new buffer
-        bool stored = false;
+        stored = false;
         for (int i = 0; i < mIonBuffers.size(); i++) {
             if (mIonBuffers[i].bufferInfo == nullptr) {
                 // Use this existing entry
@@ -654,11 +614,11 @@ unsigned EvsCamera::increaseAvailableFrames_Locked(unsigned numToAdd) {
 
 unsigned EvsCamera::decreaseAvailableFrames_Locked(unsigned numToRemove) {
     // Acquire the graphics buffer allocator
-    // GraphicBufferAllocator &alloc(GraphicBufferAllocator::get());
+    GraphicBufferAllocator &alloc(GraphicBufferAllocator::get());
 
     unsigned removed = 0;
 
-    #if 0
+    #if 1
     for (auto&& rec : mBuffers) {
         // Is this record not in use, but holding a buffer that we can free?
         if ((rec.inUse == false) && (rec.handle != nullptr)) {
@@ -689,17 +649,6 @@ unsigned EvsCamera::decreaseAvailableFrames_Locked(unsigned numToRemove) {
                 rec.bufferInfo = nullptr;
                 rec.handle = nullptr;
             } else {
-                videoin_buf_output_info outInfo;
-                outInfo.va = rec.bufferInfo->va;
-                outInfo.fd = rec.bufferInfo->fd;
-                outInfo.size = rec.bufferInfo->size;
-
-                int ret = videoin_buffer_free(&outInfo);
-                if (ret) {
-                    ALOGE("videoin_buffer_free failed.");
-                }
-
-                free((void*)rec.handle);
                 free(rec.bufferInfo);
 
                 rec.bufferInfo = nullptr;
@@ -1009,13 +958,23 @@ sp<EvsCamera> EvsCamera::Create(const char *deviceName,
     return evsCamera;
 }
 
-sp<EvsCamera> EvsCamera::Create(const char *deviceName, camera_stream_t* cameraStream) {
+sp<EvsCamera> EvsCamera::Create(const char *deviceName,
+                                CameraInfo* cameraInfo,
+                                CameraStream* cameraStream) {
     unique_ptr<ConfigManager::CameraInfo> nullCamInfo = nullptr;
 
     sp<EvsCamera> evsCamera = new EvsCamera(deviceName, nullCamInfo, cameraStream);
     if (evsCamera == nullptr) {
         return nullptr;
     }
+
+    evsCamera->mWidth = cameraInfo->width;
+    evsCamera->mHeight = cameraInfo->height;
+    evsCamera->mFormat = cameraInfo->format;
+    evsCamera->mSize = cameraInfo->width * cameraInfo->height * 2; // FIXME: onlay support YUV422 for now.
+    evsCamera->mUsage  = GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_CAMERA_WRITE |
+                         GRALLOC_USAGE_SW_READ_RARELY | GRALLOC_USAGE_SW_WRITE_RARELY;
+    evsCamera->mFps = cameraInfo->fps;
 
     return evsCamera;
 }

@@ -78,9 +78,9 @@ typedef struct camera_interface_t {
     int (*close)(uint32_t id);
 } CameraInterface;
 
-struct camera_device_t {
+typedef struct camera_device_t {
     struct hw_device_t common;
     const struct camera_interface_t* (*get_camera_interface)();
-};
+} CameraDevice;
 
 #endif

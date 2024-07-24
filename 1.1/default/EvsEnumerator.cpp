@@ -57,7 +57,7 @@ EvsEnumerator::EvsEnumerator(sp<IAutomotiveDisplayProxyService> windowService) {
     
     #else
     hw_module_t* module;
-    struct camera_device_t* camdev;
+    CameraDevice* camdev;
     int err = hw_get_module(CAMERA_HARDWARE_MODULE_ID, (hw_module_t const**)&module);
     if (err)  {
         ALOGE("hw_get_module load camera module falied!");
@@ -71,7 +71,7 @@ EvsEnumerator::EvsEnumerator(sp<IAutomotiveDisplayProxyService> windowService) {
         return;
     }
 
-    camdev = reinterpret_cast<camera_device_t*>(device);
+    camdev = reinterpret_cast<CameraDevice*>(device);
     sCameraInterface = camdev->get_camera_interface();
     if (sCameraInterface == nullptr) {
         ALOGE("get_camera_interface falied!");

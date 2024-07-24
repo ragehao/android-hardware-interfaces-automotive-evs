@@ -535,7 +535,6 @@ unsigned EvsCamera::increaseAvailableFrames_Locked(unsigned numToAdd) {
     unsigned added = 0;
 
     while (added < numToAdd) {
-        #if 1
         buffer_handle_t memHandle = nullptr;
         status_t result = alloc.allocate(mWidth, mHeight, mFormat, 1, mUsage,
                                          &memHandle, &mStride, 0, "EvsCamera");
@@ -560,6 +559,8 @@ unsigned EvsCamera::increaseAvailableFrames_Locked(unsigned numToAdd) {
 
         // Find a place to store the new buffer
         bool stored = false;
+
+        #if 0
         for (auto&& rec : mBuffers) {
             if (rec.handle == nullptr) {
                 // Use this existing entry
@@ -618,7 +619,7 @@ unsigned EvsCamera::decreaseAvailableFrames_Locked(unsigned numToRemove) {
 
     unsigned removed = 0;
 
-    #if 1
+    #if 0
     for (auto&& rec : mBuffers) {
         // Is this record not in use, but holding a buffer that we can free?
         if ((rec.inUse == false) && (rec.handle != nullptr)) {
@@ -647,11 +648,13 @@ unsigned EvsCamera::decreaseAvailableFrames_Locked(unsigned numToRemove) {
                 free(rec.bufferInfo);
 
                 rec.bufferInfo = nullptr;
+
                 rec.handle = nullptr;
             } else {
                 free(rec.bufferInfo);
 
                 rec.bufferInfo = nullptr;
+                alloc.free(rec.handle);
                 rec.handle = nullptr;
             }
 

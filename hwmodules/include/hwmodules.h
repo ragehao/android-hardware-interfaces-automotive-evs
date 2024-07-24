@@ -30,8 +30,8 @@ typedef struct camera_buffer_t {
     int fd;                 /**<Buffer fd*/
     unsigned int size;      /**<Buffer size in byte*/
     unsigned int y_stride;  /**<Data y stride*/
-    unsigned int u_stride;  /**<Data cr stride*/
-    unsigned int v_stride;  /**<Data cb stride*/
+    unsigned int u_stride;  /**<Data u stride*/
+    unsigned int v_stride;  /**<Data v stride*/
     void* va;               /**<IO Virtual memory address*/
     void* pa;               /**<Buffer physical memory address. Reserved*/
     int64_t timestamp;      /**<Data timestamp*/

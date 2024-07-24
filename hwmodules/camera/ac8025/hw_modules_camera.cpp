@@ -23,13 +23,13 @@
 
 static ICameraManager* sCameraManager = nullptr;
 
-const static std::map<uint32_t, camera_fmt_t> kCameraFormat = {
-    {VIDEOIN_DATA_FMT_YUYV, camera_fmt_t::CAMERA_FMT_YUYV},
-    {VIDEOIN_DATA_FMT_UYVY, camera_fmt_t::CAMERA_FMT_UYVY},
-    {VIDEOIN_DATA_FMT_YVU420, camera_fmt_t::CAMERA_FMT_YV12},
-    {VIDEOIN_DATA_FMT_YUV420, camera_fmt_t::CAMERA_FMT_YU12},
-    {VIDEOIN_DATA_FMT_NV12, camera_fmt_t::CAMERA_FMT_NV21},
-    {VIDEOIN_DATA_FMT_NV21, camera_fmt_t::CAMERA_FMT_NV12},
+const static std::map<camera_fmt_t, uint32_t> kCameraFormat = {
+    {camera_fmt_t::CAMERA_FMT_YUYV, VIDEOIN_DATA_FMT_YUYV},
+    {camera_fmt_t::CAMERA_FMT_UYVY, VIDEOIN_DATA_FMT_UYVY},
+    {camera_fmt_t::CAMERA_FMT_YV12, VIDEOIN_DATA_FMT_YVU420},
+    {camera_fmt_t::CAMERA_FMT_YU12, VIDEOIN_DATA_FMT_YUV420},
+    {camera_fmt_t::CAMERA_FMT_NV21, VIDEOIN_DATA_FMT_NV12},
+    {camera_fmt_t::CAMERA_FMT_NV12, VIDEOIN_DATA_FMT_NV21},
 };
 
 const static std::map<int, camera_info_t> kCameraInfo = {
@@ -68,7 +68,6 @@ camera_info_t getCameraInfo(uint32_t id)
     info.width = staticInfo.width;
     info.height = staticInfo.height;
     info.fps = staticInfo.fps;
-    // info.format = kCameraFormat.find(staticInfo.format)->second;
     // TODO: add other fields.
 
     return info;
@@ -103,7 +102,7 @@ static int queueBuffer(camera_stream_t* stream, camera_buffer_t* buffer)
     ICameraStream* camera_stream = nullptr;
     ICameraStream::bufferInfo buffer_info;
 
-    if (!stream || buffer) {
+    if (!stream || !buffer) {
         ALOGE("Invalid argument(s).");
         goto __error;
     }
@@ -135,7 +134,7 @@ static int dequeueBuffer(camera_stream_t* stream, camera_buffer_t* buffer)
     ICameraStream* camera_stream = nullptr;
     ICameraStream::bufferInfo buffer_info;
 
-    if (!stream || buffer) {
+    if (!stream || !buffer) {
         ALOGE("Invalid argument(s).");
         goto __error;
     }
@@ -216,20 +215,32 @@ camera_stream_t* open(uint32_t id)
     }
 
     camera_stream = camera_source->acquireCameraStream();
-    if (camera_stream) {
-        ALOGE("Failed to get camera[%d] instance.", id);
+    if (!camera_stream) {
+        ALOGE("Failed to acquire camera[%d] stream.", id);
         goto __error;
     }
 
     stream->stream_handle = (void*)camera_stream;
 
-    
+    if (kCameraInfo.find(id) == kCameraInfo.end()) {
+        ALOGE("Invalid camera[%d] info.", id);
+        goto __error;
+    }
+
     info = kCameraInfo.at(id);
+
+    if (kCameraFormat.find(info.format) == kCameraFormat.end()) {
+        ALOGE("Invalid camera format[%d].", info.format);
+        goto __error;
+    }
     
     format.pixelfmt = kCameraFormat.at(info.format);
+
     format.width = info.width;
     format.height = info.height;
     format.fps = info.fps;
+
+    ALOGD("Config camera[%d] stream: %dx%d, fps:%d.", id, info.width, info.height, info.fps);
 
     ret = camera_stream->config(format);
     if (ret) {
@@ -279,6 +290,11 @@ static int open_camera(const struct hw_module_t *module, char const *name, struc
 {
     struct camera_device_t *dev = (struct camera_device_t *)malloc(sizeof(struct camera_device_t));
     memset(dev, 0x00, sizeof(camera_device_t));
+
+    if (!module || !name || !device) {
+        ALOGE("Invalid arguments.");
+        return -1;
+    }
 
     dev->common.tag = HARDWARE_DEVICE_TAG;
     dev->common.version = 0;

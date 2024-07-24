@@ -137,7 +137,7 @@ Return<void> EvsEnumerator::getCameraList(getCameraList_cb _hidl_cb)  {
 
 
 Return<sp<IEvsCamera_1_0>> EvsEnumerator::openCamera(const hidl_string& cameraId) {
-    ALOGD("openCamera");
+    ALOGD("openCamera[%s].", cameraId.c_str());
 
     // Find the named camera
     CameraRecord *pRecord = nullptr;
@@ -357,6 +357,7 @@ Return<void> EvsEnumerator::getCameraList_1_1(getCameraList_1_1_cb _hidl_cb)  {
 Return<sp<IEvsCamera_1_1>>
 EvsEnumerator::openCamera_1_1(const hidl_string& cameraId,
                               const Stream& streamCfg) {
+    ALOGD("openCamera_1_1[%s].", cameraId.c_str());
     // Find the named camera
     CameraRecord *pRecord = nullptr;
     for (auto &&cam : sCameraList) {

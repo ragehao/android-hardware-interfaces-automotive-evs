@@ -47,47 +47,59 @@ EvsCamera::EvsCamera(const char *id,
         mStreamState(STOPPED),
         mCameraInfo(camInfo) {
 
-    ALOGD("EvsCamera instantiated");
+    ALOGD("EvsCamera instantiate start.");
+
+    if (!id) {
+        ALOGE("Invalid parameters.");
+        return;
+    }
 
     /* set a camera id */
     mDescription.v1.cameraId = id;
 
     /* set camera metadata */
-    mDescription.metadata.setToExternal((uint8_t *)camInfo->characteristics,
-                                        get_camera_metadata_size(camInfo->characteristics));
-}
+    if (camInfo) {
+        mDescription.metadata.setToExternal((uint8_t *)camInfo->characteristics, get_camera_metadata_size(camInfo->characteristics));
+    }
 
-EvsCamera::EvsCamera(const char *id,
-                     unique_ptr<ConfigManager::CameraInfo> &camInfo,
-                     CameraStream* cameraStream) :
-        mFramesAllowed(0),
-        mFramesInUse(0),
-        mStreamState(STOPPED),
-        mCameraStream(cameraStream),
-        mCameraInfo(camInfo) {
-
-    if (!id || !cameraStream) {
-        ALOGE("Invalid parameters.");
+    mCameraStream = EvsEnumerator::getCameraInterface()->open(std::stoi(id));
+    if (!mCameraStream) {
+        ALOGE("Camera[%s] open failed.", id);
         return;
     }
-    
-    mDescription.v1.cameraId = id;
 
-    ALOGD("EvsCamera instantiated");
+    CameraInfo info = EvsEnumerator::getCameraInterface()->get_camera_info(std::stoi(id));
+    ALOGI("Camera[%s] info: type = %d, vendorFlags = %d, format = %d, width = %d, height = %d, fps = %d.",
+            id,
+            info.type,
+            info.vendorFlags,
+            info.format,
+            info.width,
+            info.height,
+            info.fps);
+    
+    mWidth = info.width;
+    mHeight = info.height;
+    mFps = info.fps;
+    mSize = info.width * info.height * 2; // FIXME: onlay support YUV422 for now.
+    mUsage  = GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_CAMERA_WRITE | GRALLOC_USAGE_SW_READ_RARELY | GRALLOC_USAGE_SW_WRITE_RARELY;
+
+    ALOGD("EvsCamera instantiate complete.");
+
 }
 
 EvsCamera::~EvsCamera() {
-    ALOGD("EvsCamera being destroyed");
+    ALOGD("Camera[%s] EvsCamera being destroyed", mDescription.v1.cameraId.c_str());
     forceShutdown();
+    EvsEnumerator::getCameraInterface()->close(std::stoi(mDescription.v1.cameraId));
 }
-
 
 //
 // This gets called if another caller "steals" ownership of the camera
 //
 void EvsCamera::forceShutdown()
 {
-    ALOGD("EvsCamera forceShutdown");
+    ALOGD("Camera[%s] EvsCamera forceShutdown", mDescription.v1.cameraId.c_str());
 
     // Make sure our output stream is cleaned up
     // (It really should be already)
@@ -141,7 +153,7 @@ void EvsCamera::forceShutdown()
 
 // Methods from ::android::hardware::automotive::evs::V1_0::IEvsCamera follow.
 Return<void> EvsCamera::getCameraInfo(getCameraInfo_cb _hidl_cb) {
-    ALOGD("getCameraInfo");
+    ALOGD("Camera[%s] getCameraInfo", mDescription.v1.cameraId.c_str());
 
     // Send back our self description
     _hidl_cb(mDescription.v1);
@@ -150,7 +162,7 @@ Return<void> EvsCamera::getCameraInfo(getCameraInfo_cb _hidl_cb) {
 
 
 Return<EvsResult> EvsCamera::setMaxFramesInFlight(uint32_t bufferCount) {
-    ALOGD("setMaxFramesInFlight");
+    ALOGD("Camera[%s] setMaxFramesInFlight", mDescription.v1.cameraId.c_str());
     std::lock_guard<std::mutex> lock(mAccessLock);
 
     // If we've been displaced by another owner of the camera, then we can't do anything else
@@ -175,7 +187,7 @@ Return<EvsResult> EvsCamera::setMaxFramesInFlight(uint32_t bufferCount) {
 
 
 Return<EvsResult> EvsCamera::startVideoStream(const ::android::sp<IEvsCameraStream_1_0>& stream)  {
-    ALOGD("startVideoStream");
+    ALOGD("Camera[%s] startVideoStream", mDescription.v1.cameraId.c_str());
     std::lock_guard<std::mutex> lock(mAccessLock);
 
     // If we've been displaced by another owner of the camera, then we can't do anything else
@@ -194,6 +206,11 @@ Return<EvsResult> EvsCamera::startVideoStream(const ::android::sp<IEvsCameraStre
             ALOGE("Failed to start stream because we couldn't get a graphics buffer");
             return EvsResult::BUFFER_NOT_AVAILABLE;
         }
+    }
+
+    if (!mCameraStream) {
+        ALOGE("Failed to start stream due to invalid camera stream object.");
+        return EvsResult::UNDERLYING_SERVICE_ERROR;
     }
 
     int ret = 0;
@@ -245,10 +262,16 @@ Return<void> EvsCamera::doneWithFrame(const BufferDesc_1_0& buffer) {
 
 
 Return<void> EvsCamera::stopVideoStream()  {
-    ALOGD("stopVideoStream");
+    ALOGD("Camera[%s] stopVideoStream", mDescription.v1.cameraId.c_str());
     std::unique_lock <std::mutex> lock(mAccessLock);
 
     if (mStreamState == RUNNING) {
+        // Stream off
+        int ret = mCameraStream->stop_video(mCameraStream);
+        if (ret) {
+            ALOGE("Camera[%s] stop stream failed.", mDescription.v1.cameraId.c_str());
+        }
+
         // Tell the GenerateFrames loop we want it to stop
         mStreamState = STOPPING;
 
@@ -731,9 +754,9 @@ void EvsCamera::generateFrames() {
                 continue;
             }
 
-            ALOGD("Camera[%s] dequeue buffer info: index = %d, fd = %d, size = %d, va = %p, pa = %p.", 
+            ALOGD("Camera[%s] dequeue buffer info: index = %d, fd = %d, size = %d, timestamp = %ld.", 
                 mDescription.v1.cameraId.c_str(),
-                bufferInfo.buf_idx, bufferInfo.fd, bufferInfo.size, bufferInfo.va, bufferInfo.pa);
+                bufferInfo.buf_idx, bufferInfo.fd, bufferInfo.size, bufferInfo.timestamp);
 
             // Assemble the buffer description we'll transmit below
             BufferDesc_1_1 newBuffer = {};
@@ -760,8 +783,9 @@ void EvsCamera::generateFrames() {
                     rec.inUse = true;
                     idx = rec.bufferInfo->buf_idx;
                     mFramesInUse++;
-                    ALOGD("Camera[%s] Found buffer index = %d fd = %d, set it in use.", mDescription.v1.cameraId.c_str(),
-                                                                                        rec.bufferInfo->buf_idx, bufferInfo.fd);
+                    ALOGD("Camera[%s] Found buffer index = %d fd = %d, set it in use.", 
+                            mDescription.v1.cameraId.c_str(),
+                            rec.bufferInfo->buf_idx, bufferInfo.fd);
                 }
             }
 
@@ -791,8 +815,9 @@ void EvsCamera::generateFrames() {
 
             auto result = mStream->deliverFrame_1_1(frames);
             if (result.isOk()) {
-                ALOGD("Camera[%s] Delivered %p as id %d", mDescription.v1.cameraId.c_str(),
-                      newBuffer.buffer.nativeHandle.getNativeHandle(), newBuffer.bufferId);
+                ALOGD("Camera[%s] Delivered %p as id %d whose timestamp %ld with latency %ld.", mDescription.v1.cameraId.c_str(),
+                      newBuffer.buffer.nativeHandle.getNativeHandle(), newBuffer.bufferId,
+                      newBuffer.timestamp, newBuffer.timestamp - bufferInfo.timestamp);
             } else {
                 // This can happen if the client dies and is likely unrecoverable.
                 // To avoid consuming resources generating failing calls, we stop sending
@@ -948,40 +973,20 @@ sp<EvsCamera> EvsCamera::Create(const char *deviceName,
     /* default implementation does not use a given configuration */
     (void)streamCfg;
 
-    /* Use the first resolution from the list for the testing */
-    auto it = camInfo->streamConfigurations.begin();
-    evsCamera->mWidth = it->second[1];
-    evsCamera->mHeight = it->second[2];
-    evsCamera->mDescription.v1.vendorFlags = 0xFFFFFFFF; // Arbitrary test value
+    if (camInfo) {
+        /* Use the first resolution from the list for the testing */
+        auto it = camInfo->streamConfigurations.begin();
+        evsCamera->mWidth = it->second[1];
+        evsCamera->mHeight = it->second[2];
+        evsCamera->mDescription.v1.vendorFlags = 0xFFFFFFFF; // Arbitrary test value
 
-    evsCamera->mFormat = HAL_PIXEL_FORMAT_RGBA_8888;
-    evsCamera->mUsage  = GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_CAMERA_WRITE |
-                         GRALLOC_USAGE_SW_READ_RARELY | GRALLOC_USAGE_SW_WRITE_RARELY;
-
-    return evsCamera;
-}
-
-sp<EvsCamera> EvsCamera::Create(const char *deviceName,
-                                CameraInfo* cameraInfo,
-                                CameraStream* cameraStream) {
-    unique_ptr<ConfigManager::CameraInfo> nullCamInfo = nullptr;
-
-    sp<EvsCamera> evsCamera = new EvsCamera(deviceName, nullCamInfo, cameraStream);
-    if (evsCamera == nullptr) {
-        return nullptr;
+        evsCamera->mFormat = HAL_PIXEL_FORMAT_RGBA_8888;
+        evsCamera->mUsage  = GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_CAMERA_WRITE |
+                            GRALLOC_USAGE_SW_READ_RARELY | GRALLOC_USAGE_SW_WRITE_RARELY;
     }
-
-    evsCamera->mWidth = cameraInfo->width;
-    evsCamera->mHeight = cameraInfo->height;
-    evsCamera->mFormat = cameraInfo->format;
-    evsCamera->mSize = cameraInfo->width * cameraInfo->height * 2; // FIXME: onlay support YUV422 for now.
-    evsCamera->mUsage  = GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_CAMERA_WRITE |
-                         GRALLOC_USAGE_SW_READ_RARELY | GRALLOC_USAGE_SW_WRITE_RARELY;
-    evsCamera->mFps = cameraInfo->fps;
-
+    
     return evsCamera;
 }
-
 
 } // namespace implementation
 } // namespace V1_0

@@ -91,9 +91,6 @@ public:
     static sp<EvsCamera> Create(const char *deviceName,
                                 unique_ptr<ConfigManager::CameraInfo> &camInfo,
                                 const Stream *streamCfg = nullptr);
-    static sp<EvsCamera> Create(const char *deviceName, 
-                                CameraInfo* cameraInfo, 
-                                CameraStream* cameraStream);
     EvsCamera(const EvsCamera&) = delete;
     EvsCamera& operator=(const EvsCamera&) = delete;
 
@@ -105,13 +102,9 @@ public:
     static const char kCameraName_Backup[];
 
 private:
-    EvsCamera(const char *id,
-              unique_ptr<ConfigManager::CameraInfo> &camInfo);
-    EvsCamera(const char *id,
-              unique_ptr<ConfigManager::CameraInfo> &camInfo,
-              CameraStream* cameraStream);
+    EvsCamera(const char *id, unique_ptr<ConfigManager::CameraInfo> &camInfo);
+
     // These three functions are expected to be called while mAccessLock is held
-    //
     bool setAvailableFrames_Locked(unsigned bufferCount);
     unsigned increaseAvailableFrames_Locked(unsigned numToAdd);
     unsigned decreaseAvailableFrames_Locked(unsigned numToRemove);

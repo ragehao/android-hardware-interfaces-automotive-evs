@@ -78,6 +78,8 @@ public:
     // Implementation details
     EvsEnumerator(sp<IAutomotiveDisplayProxyService> windowService = nullptr);
 
+    static const CameraInterface* getCameraInterface(void) { return sCameraInterface; };
+
 private:
     // NOTE:  All members values are static so that all clients operate on the same state
     //        That is to say, this is effectively a singleton despite the fact that HIDL

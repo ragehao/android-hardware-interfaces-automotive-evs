@@ -220,6 +220,7 @@ camera_stream_t* open(uint32_t id)
         goto __error;
     }
 
+    stream->source_handle = (void*)camera_source;
     stream->stream_handle = (void*)camera_stream;
 
     if (kCameraInfo.find(id) == kCameraInfo.end()) {
@@ -269,9 +270,39 @@ __error:
     return nullptr;
 }
 
-int close(uint32_t id)
+int close(camera_stream_t* stream)
 {
+    ICameraSource* camera_source;
+    ICameraStream* camera_stream;
+
+    if (!stream) {
+        ALOGE("Invalid stream.");
+        goto __error;
+    }
+
+    if (!stream->source_handle) {
+        ALOGE("Invalid camera source.");
+        goto __error;
+    }
+
+    if (!stream->stream_handle) {
+        ALOGE("Invalid camera stream.");
+        goto __error;
+    }
+
+    camera_source = (ICameraSource*)stream->source_handle;
+    camera_stream = (ICameraStream*)stream->stream_handle;
+
+    camera_source->releaseCameraStream(camera_stream);
+    camera_source->close();
+
+    sCameraManager->freeCameraInstance(camera_source);
+
+    free(stream);
+
     return 0;
+__error:
+    return -1;
 }
 
 static const camera_interface_t sCameraInterface = {

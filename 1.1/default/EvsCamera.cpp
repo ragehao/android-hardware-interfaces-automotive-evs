@@ -47,7 +47,7 @@ EvsCamera::EvsCamera(const char *id,
         mStreamState(STOPPED),
         mCameraInfo(camInfo) {
 
-    ALOGD("EvsCamera instantiate start.");
+    ALOGD("EvsCamera being instantiated.");
 
     if (!id) {
         ALOGE("Invalid parameters.");
@@ -84,14 +84,22 @@ EvsCamera::EvsCamera(const char *id,
     mSize = info.width * info.height * 2; // FIXME: onlay support YUV422 for now.
     mUsage  = GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_CAMERA_WRITE | GRALLOC_USAGE_SW_READ_RARELY | GRALLOC_USAGE_SW_WRITE_RARELY;
 
-    ALOGD("EvsCamera instantiate complete.");
+    ALOGD("Camera[%s] EvsCamera instantiated.", mDescription.v1.cameraId.c_str());
 
 }
 
 EvsCamera::~EvsCamera() {
     ALOGD("Camera[%s] EvsCamera being destroyed", mDescription.v1.cameraId.c_str());
     forceShutdown();
-    EvsEnumerator::getCameraInterface()->close(std::stoi(mDescription.v1.cameraId));
+
+    if (mCameraStream) {
+        int ret = EvsEnumerator::getCameraInterface()->close(mCameraStream);
+        if (ret) {
+            ALOGE("Camera[%s] close failed.", mDescription.v1.cameraId.c_str());
+        } 
+    }
+
+    ALOGD("Camera[%s] EvsCamera destroyed", mDescription.v1.cameraId.c_str());
 }
 
 //

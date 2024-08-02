@@ -47,6 +47,7 @@ typedef struct camera_info_t {
 } CameraInfo;
 
 typedef struct camera_stream_t {
+    void* source_handle;
     void* stream_handle;
 
     /** Starts video stream. */
@@ -75,7 +76,7 @@ typedef struct camera_interface_t {
     camera_stream_t* (*open)(uint32_t id);
 
     /** Closes the camera device. */
-    int (*close)(uint32_t id);
+    int (*close)(camera_stream_t* stream);
 } CameraInterface;
 
 typedef struct camera_device_t {

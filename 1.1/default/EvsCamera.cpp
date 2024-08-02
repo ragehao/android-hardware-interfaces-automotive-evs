@@ -121,7 +121,7 @@ void EvsCamera::forceShutdown()
         GraphicBufferAllocator& alloc(GraphicBufferAllocator::get());
         for (auto&& rec : mBuffers) {
             if (rec.inUse) {
-                ALOGE("Error - releasing buffer despite remote ownership");
+                ALOGE("Camera[%s] Error - releasing buffer despite remote ownership", mDescription.v1.cameraId.c_str());
             }
             alloc.free(rec.handle);
             rec.handle = nullptr;
@@ -133,7 +133,7 @@ void EvsCamera::forceShutdown()
         for (auto&& rec : mIonBuffers) {
             
             if (rec.inUse) {
-                ALOGE("Error - releasing buffer despite remote ownership");
+                ALOGE("Camera[%s] Error - releasing buffer despite remote ownership", mDescription.v1.cameraId.c_str());
             }
 
             if (rec.isExternal) {
@@ -831,13 +831,17 @@ void EvsCamera::generateFrames() {
                 // To avoid consuming resources generating failing calls, we stop sending
                 // frames.  Note, however, that the stream remains in the "STREAMING" state
                 // until cleaned up on the main thread.
-                ALOGE("Frame delivery call failed in the transport layer.");
+                ALOGE("Camera[%s] Frame delivery call failed in the transport layer.",  mDescription.v1.cameraId.c_str());
 
                 // Since we didn't actually deliver it, mark the frame as available
                 std::lock_guard<std::mutex> lock(mAccessLock);
+                #if 0
                 mBuffers[idx].inUse = false;
+                #endif
+                mIonBuffers[idx].inUse = false;
                 mFramesInUse--;
 
+                ALOGE("Camera[%s] Marked buffer %d as available.", mDescription.v1.cameraId.c_str(), idx);
                 break;
             }
         }

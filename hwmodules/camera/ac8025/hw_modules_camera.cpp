@@ -33,10 +33,10 @@ const static std::map<camera_fmt_t, uint32_t> kCameraFormat = {
 };
 
 const static std::map<int, camera_info_t> kCameraInfo = {
-    { 0, { camera_type_t::CAMERA_TYPE_AVM, 0x00000002, camera_fmt_t::CAMERA_FMT_UYVY, 1280, 960, 25 }},
-    { 1, { camera_type_t::CAMERA_TYPE_AVM, 0x00000002, camera_fmt_t::CAMERA_FMT_UYVY, 1280, 960, 25 }},
-    { 2, { camera_type_t::CAMERA_TYPE_AVM, 0x00000002, camera_fmt_t::CAMERA_FMT_UYVY, 1280, 960, 25 }},
-    { 3, { camera_type_t::CAMERA_TYPE_AVM, 0x00000002, camera_fmt_t::CAMERA_FMT_UYVY, 1280, 960, 25 }},
+    { 10, { camera_type_t::CAMERA_TYPE_AVM, 0x00000002, camera_fmt_t::CAMERA_FMT_UYVY, 1280, 960, 25 }},
+    { 11, { camera_type_t::CAMERA_TYPE_AVM, 0x00000002, camera_fmt_t::CAMERA_FMT_UYVY, 1280, 960, 25 }},
+    { 12, { camera_type_t::CAMERA_TYPE_AVM, 0x00000002, camera_fmt_t::CAMERA_FMT_UYVY, 1280, 960, 25 }},
+    { 13, { camera_type_t::CAMERA_TYPE_AVM, 0x00000002, camera_fmt_t::CAMERA_FMT_UYVY, 1280, 960, 25 }},
 };
 
 std::vector<uint32_t> getCameraList(void)

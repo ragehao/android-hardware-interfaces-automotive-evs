@@ -758,6 +758,14 @@ void EvsCamera::generateFrames() {
             int ret = mCameraStream->dequeue_buffer(mCameraStream, &bufferInfo);
             if (ret) {
                 ALOGE("Camera[%s] stream dequeue failed.", mDescription.v1.cameraId.c_str());
+
+                EvsEventDesc event;
+                event.aType = EvsEventType::STREAM_ERROR;
+                auto result = mStream->notify(event);
+                if (!result.isOk()) {
+                    ALOGE("Error delivering end of stream marker");
+                }
+
                 usleep(10 * 1000); // 10ms
                 continue;
             }
